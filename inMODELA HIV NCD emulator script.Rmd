@@ -1,0 +1,492 @@
+---
+title: "InMODELA HIV-NCD Emulator development"
+author: "Sharon Sawe"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup}
+
+#Clean the working environment: Ensure you have saved all other things in the working environment that you may need in future before running this command
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = T,message = FALSE,warning = FALSE, error = FALSE)
+#install.packages("pacman",dependencies = T)
+pacman::p_load(ggplot2,GauPro,bayesplot,rstanarm,dplyr,knitr)
+#needed libraries
+# library(ggplot2)
+# library(Gaupro)
+# library(bayesplot)
+# library(rstanarm)
+
+```
+
+# Emulator development
+We developed an emulator for HIV, hypertension and depression using the gaussian process
+
+# Data
+We used data from established simulators for HIV and the aforementioned NCDs which were built using data from Kenya.
+
+## Gaussian Process
+A Gaussian process fits a model to a dataset, which gives a function that gives a prediction for the mean at any point along with a variance of this prediction.
+We implemented the gaussian process using the GauPro package.
+
+## GauPro package
+This R package provides R code for fitting Gaussian process models to data.
+
+A detailed guide of the GauPro package in R by Collin Erickson can be found here:
+
+https://cran.r-project.org/web/packages/GauPro/vignettes/GauPro.html
+
+1. HIV
+
+```{r}
+# HIV modelling
+# Starting with prevalence of HIV in Western Kenya
+# The prevalence in 2018 is 5%
+# The prevalence in 2028 is 3%
+
+# x is the years
+x <- seq(2018,2028,l=11)
+
+# y is the prevalences for the two points in 2018 and 2028 whereby the seq will simulate the prevalence values in between 2018 and 2028
+y <- seq(0.0481,0.0255, l=11)
+
+plot(x, y,
+     ylim=c(0,0.2), xlab="years", ylab= "HIV Prevalence")
+# Linear model
+lm_mod <- lm(y ~ x)
+plot(x, y, xlab="years", ylab= "HIV Prevalence",type = "l",ylim = c(0,0.05))
+abline(a=lm_mod$coef[1], b=lm_mod$coef[2], col='red')
+
+
+# GAUPRO MODELLING
+# A very useful property of GP's is that they give a predicted error. 
+# The blue lines give an approximate 95% confidence interval.
+# The width of the prediction interval is largest between points 
+# and goes to zero near data points, which is what we would hope for.
+l = c(0.0419,0.0395,0.0373,0.0351,0.0330,0.0309,0.0290,0.0271,0.0254,0.0238,0.0220)
+u = c(0.0543,0.0512,0.0483,0.0455,0.0430,0.0402,0.0378,0.0354,0.0333,0.0312,0.0290
+)
+gp <- GauPro(x,y, parallel=FALSE)
+plot(x,y, xlab="years", ylab= "HIV Prevalence", main= "Projected prevalence of HIV",type="b", lwd=2)#,
+curve(gp$predict(x), add=T, col=2)
+curve(gp$predict(x)+1.96*gp$predict(x, se=T)$se, add=T, col=4)
+curve(gp$predict(x)-1.96*gp$predict(x, se=T)$se, add=T, col=4)
+lines(x,l,col="yellow",lwd=4)
+lines(x,u,col="yellow",lwd=4)
+
+# Creating confidence intervals
+# Create a dataframe using the annual emulator prevalence predictions
+set.seed(1234)
+new_x <- seq(min(x), max(x), length.out = 11) # 11 observations
+predict_df11       <- predict(gp, new_x, se.fit = TRUE)
+predict_df11$x     <- new_x
+predict_df11$y     <- predict_df11$mean
+predict_df11$lower <- predict_df11$y - 1.96 * predict_df11$se
+predict_df11$upper <- predict_df11$y + 1.96 * predict_df11$se
+View(predict_df11)
+
+# 21 observations to obtain confidence intervals between years 
+set.seed(1234)
+new_x <- seq(min(x), max(x), length.out = 21) # 21 observations
+predict_df21       <- predict(gp, new_x, se.fit = TRUE)
+predict_df21$x     <- new_x
+predict_df21$y     <- predict_df21$mean
+predict_df21$lower <- predict_df21$y - 1.96 * predict_df21$se
+predict_df21$upper <- predict_df21$y + 1.96 * predict_df21$se
+View(predict_df21)
+```
+
+2. Hypertension
+
+```{r,warning=FALSE,message=FALSE}
+# Hypertension modelling
+# The prevalence in 2018 is 29%
+# The prevalence in 2028 is 35%
+
+# x is the years
+x <- seq(2018,2028,l=11)
+
+# y is the prevalences for the two points in 2018 and 2028 whereby the seq will simulate the prevalence values in between 2018 and 2028
+y <- seq(0.2947,0.3430, l=11)
+
+# Plotting the linear regression
+plot(x, y,
+     ylim=c(0,0.4), xlab="years", ylab= "Hypertension Prevalence")
+# Linear model
+lm_mod <- lm(y ~ x)
+plot(x, y, xlab="years", ylab= "Hypertension Prevalence",type = "l",ylim = c(0,0.4))
+abline(a=lm_mod$coef[1], b=lm_mod$coef[2], col='red')
+
+
+# GAUPRO MODELLING
+# A very useful property of GP's is that they give a predicted error. 
+# The blue lines give an approximate 95% confidence interval.
+# The width of the prediction interval is largest between points 
+# and goes to zero near data points, which is what we would hope for.
+l = c(0.2845,0.2908,0.2965,0.3017,0.3073,0.3125,0.3171,0.3213,0.3250,0.3284,0.3313)
+u = c(0.3050,0.3116,0.3177,0.3232,0.3292,0.3347,0.3396,0.3441,0.3480,0.3516,0.3547)
+# Plotting
+gp <- GauPro(x,y, parallel=FALSE)
+plot(x,y, xlab="years", ylab= "Hypertension Prevalence", main= "Projected prevalence of Hypertension",type="b", lwd=2)#,
+curve(gp$predict(x), add=T, col=2)
+curve(gp$predict(x)+1.96*gp$predict(x, se=T)$se, add=T, col=4)
+curve(gp$predict(x)-1.96*gp$predict(x, se=T)$se, add=T, col=4)
+lines(x,l,col="yellow",lwd=4)
+lines(x,u,col="yellow",lwd=4)
+
+```
+
+3. Comorbid HIV and Hypertension
+
+```{r}
+# Comorbid HIV and Hypertension modelling
+# The prevalence in 2018 is 2.06%
+# The prevalence in 2028 is 1.31%
+
+# x is the years
+x <- seq(2018,2028,l=11)
+
+# y is the prevalences for the two points in 2018 and 2028 whereby the seq will simulate the prevalence values in between 2018 and 2028
+y <- seq(0.0206,0.0131, l=11)
+# Plotting the linear regression
+plot(x, y,
+     ylim=c(0,0.2), xlab="years", ylab= "HIV & Hypertension Prevalence")
+# Linear model
+lm_mod <- lm(y ~ x)
+plot(x, y, xlab="years", ylab= "HIV & Hypertension Prevalence",type = "l",ylim = c(0,0.03))
+abline(a=lm_mod$coef[1], b=lm_mod$coef[2], col='red')
+
+
+# GAUPRO MODELLING
+# A very useful property of GP's is that they give a predicted error. 
+# The blue lines give an approximate 95% confidence interval.
+# The width of the prediction interval is largest between points 
+# and goes to zero near data points, which is what we would hope for.
+l = c(0.0179,0.0173,0.0164,0.0158,0.0151,0.0144,0.0138,0.0132,0.0126,0.0120,0.0114)
+u = c(0.0232,0.0224,0.0212,0.0203,0.0195,0.0186,0.0179,0.0170,0.0163,0.0156,0.0148)
+# Plotting
+gp <- GauPro(x,y, parallel=FALSE)
+gp
+plot(x,y, xlab="years", ylab= "HIV & Hypertension Prevalence", main= "Projected prevalence of HIV & Hypertension",type="b", lwd=2)#,
+curve(gp$predict(x), add=T, col=2)
+curve(gp$predict(x)+1.96*gp$predict(x, se=T)$se, add=T, col=4)
+curve(gp$predict(x)-1.96*gp$predict(x, se=T)$se, add=T, col=4)
+lines(x,l,col="yellow",lwd=4)
+lines(x,u,col="yellow",lwd=4)
+```
+
+4. Depression
+
+```{r}
+# Depression modelling
+# The prevalence in 2018 is 3.9%
+# The prevalence in 2028 is 3.7%
+
+# x is the years
+x <- seq(2018,2028,l=11)
+
+# y is the prevalences for the two points in 2018 and 2028 whereby the seq will simulate the prevalence values in between 2018 and 2028
+y <- seq(0.039,0.037, l=11)
+
+# Plotting the linear regression
+plot(x, y,
+     ylim=c(0,0.04), xlab="years", ylab= "Depression Prevalence")
+# Linear model
+lm_mod <- lm(y ~ x)
+plot(x, y, xlab="years", ylab= "Depression Prevalence",type = "l",ylim = c(0,0.04))
+abline(a=lm_mod$coef[1], b=lm_mod$coef[2], col='red')
+
+
+# GAUPRO MODELLING
+# A very useful property of GP's is that they give a predicted error. 
+# The blue lines give an approximate 95% confidence interval.
+# The width of the prediction interval is largest between points 
+# and goes to zero near data points, which is what we would hope for.
+
+# Plotting
+gp <- GauPro(x,y, parallel=FALSE)
+gp
+plot(x,y, xlab="years", ylab= "Depression Prevalence", main= "Projected prevalence of Depression",type="b", lwd=2)#,
+curve(gp$predict(x), add=T, col=2)
+curve(gp$predict(x)+1.96*gp$predict(x, se=T)$se, add=T, col=4)
+curve(gp$predict(x)-1.96*gp$predict(x, se=T)$se, add=T, col=4)
+
+```
+
+```{r}
+# COMBINING THE PLOTS
+
+
+line = 1
+cex = 1
+side = 3
+adj=-0.05
+
+par(mfrow=c(2,2), oma=c(1,6,1,1))
+
+
+### PLOT 1
+# HIV
+x <- seq(2018,2028, l=11)
+y <- seq(0.0481,0.0255, l=11)
+# The simulator's confidence intervals
+l = c(0.0419,0.0395,0.0373,0.0351,0.0330,0.0309,0.0290,0.0271,0.0254,0.0238,0.0220)
+u = c(0.0543,0.0512,0.0483,0.0455,0.0430,0.0402,0.0378,0.0354,0.0333,0.0312,0.0290
+)
+# Fitting the gaussian process
+library(GauPro)
+gp <- GauPro(x,y, parallel=FALSE)
+# Plotting
+plot(x,y,xlab="years", ylab= "HIV Prevalence",type="b", lwd=2, pch=16)#,
+curve(gp$predict(x), add=T, col=2, lty=5)
+curve(gp$predict(x)+1.96*gp$predict(x, se=T)$se, add=T, col=4)
+curve(gp$predict(x)-1.96*gp$predict(x, se=T)$se, add=T, col=4)
+lines(x,l,col="yellow",lwd=4)
+lines(x,u,col="yellow",lwd=4)
+mtext("A", side=side, line=line, cex=cex, adj=adj)
+
+
+# PLOT 2
+# Hypertension
+x <- seq(2018,2028, l=11)
+y <- seq(0.2947,0.3430, l=11)
+# Fitting the gaussian process
+# The simulator's confidence intervals
+l = c(0.2845,0.2908,0.2965,0.3017,0.3073,0.3125,0.3171,0.3213,0.3250,0.3284,0.3313)
+u = c(0.3050,0.3116,0.3177,0.3232,0.3292,0.3347,0.3396,0.3441,0.3480,0.3516,0.3547)
+# Fitting the gaussian process
+library(GauPro)
+gp <- GauPro(x,y, parallel=FALSE)
+# Plotting
+plot(x,y, xlab="years", ylab= "Hypertension Prevalence",type="b", lwd=2, pch=16)#,
+curve(gp$predict(x), add=T, col=2, lty=5)
+curve(gp$predict(x)+1.96*gp$predict(x, se=T)$se, add=T, col=4)
+curve(gp$predict(x)-1.96*gp$predict(x, se=T)$se, add=T, col=4)
+lines(x,l,col="yellow",lwd=4)
+lines(x,u,col="yellow",lwd=4)
+mtext("B", side=side, line=line, cex=cex, adj=adj)
+
+# PLOT 3
+# Comorbid HIV and hypertension
+x <- seq(2018,2028, l=11)
+y <- seq(0.0206,0.0131, l=11)
+# Fitting the gaussian process
+# The simulator's confidence intervals
+l = c(0.0179,0.0173,0.0164,0.0158,0.0151,0.0144,0.0138,0.0132,0.0126,0.0120,0.0114)
+u = c(0.0232,0.0224,0.0212,0.0203,0.0195,0.0186,0.0179,0.0170,0.0163,0.0156,0.0148)
+# Fitting the gaussian process
+library(GauPro)
+gp <- GauPro(x,y, parallel=FALSE)
+# Plotting
+plot(x,y, xlab="years", ylab= "HIV & Hypertension Prevalence",type="b", lwd=2, pch=16)#,
+curve(gp$predict(x), add=T, col=2, lty=5)
+curve(gp$predict(x)+1.96*gp$predict(x, se=T)$se, add=T, col=4)
+curve(gp$predict(x)-1.96*gp$predict(x, se=T)$se, add=T, col=4)
+lines(x,l,col="yellow",lwd=4)
+lines(x,u,col="yellow",lwd=4)
+mtext("C", side=side, line=line, cex=cex, adj=adj)
+
+# PLOT 4
+x <- seq(2018,2028, l=11)
+y <- seq(0.039,0.037, l=11)
+# Fitting the gaussian process
+library(GauPro)
+gp <- GauPro(x,y, parallel=FALSE)
+# Plotting
+plot(x,y, xlab="years", ylab= "Depression Prevalence",type="b", lwd=2, pch=16)
+curve(gp$predict(x), add=T, col = 2, lty=5)
+curve(gp$predict(x)+1.96*gp$predict(x, se=T)$se, add=T, col = 4)
+curve(gp$predict(x)-1.96*gp$predict(x, se=T)$se, add=T, col = 4)
+mtext("D", side=side, line=line, cex=cex, adj=adj)
+```
+# BAYESIAN POSTERIOR PREDICTIVE ANALYSIS
+- This step provides posterior predictive distributions that can be used to analyze the credibility of future observable data based on the posterior distribution.
+- The procedure is implemented via the Bayesian inference rstanarm package
+- A detailed guide of the posterior predictive analysis can be found here:
+
+https://cran.r-project.org/web/packages/bayesplot/vignettes/graphical-ppcs.html
+```{r}
+# Combination
+side=3
+line = 1
+cex = 1
+adj=-0.05
+
+par(mfrow=c(2,2), oma=c(1,6,1,1))
+
+set.seed(12345)
+
+
+# PLOT 1
+# HIV
+x <- c(2018,2019,2020,2021,2022,2023,2024,2025,2026,2027,2028)
+y <- c(0.0481,0.0454,0.0428,0.0403,0.0380,0.0355,0.0334,0.0313,0.0294,0.0275,0.0255)
+# R stanarm
+sm1   <- stan_glm(y~x, family=gaussian(), data = data.frame(x,y), seed=1234)
+# Y predicted
+ypred <- posterior_predict(sm1, draws = 50)
+# density plot
+plot(density(y),col="black",lwd=3, xlab="HIV prevalence", main="HIV")
+lines(density(ypred[1,]), col="red", lty=2, lwd=3)
+for(i in 1:nrow(ypred))
+{lines(density(ypred[i,]),col="pink",lty=3)}
+#lines(density(colMeans(ypred)), col="red", lty=2, lwd=3)
+lines(density(ypred[1,]), col="red", lty=2, lwd=3)
+legend("bottomright", c("y", "post-pred y", "y rep"), lty=c(1,2,3), lwd=2, col=c("black", "red", "pink"), bty="n")
+mtext("A", side=side, line=line, cex=cex, adj=adj)
+
+
+
+
+# PLOT 2
+# Hypertension
+x <- c(2018,2019,2020,2021,2022,2023,2024,2025,2026,2027,2028)
+y <- c(0.2947,0.3012,0.3071,0.3125,0.3182,0.3236,0.3283,0.3327,0.3365,0.3400,0.3430)
+# R stanam
+sm2   <- stan_glm(y~x, family=gaussian(), data = data.frame(x,y), seed=1234)
+# Y predicted
+ypred <- posterior_predict(sm2, draws = 50)
+# density plot
+plot(density(y),col="black", lwd=3, xlab="Hypertension prevalence", main="Hypertension")
+lines(density(ypred[1,]), col="red", lty=2, lwd=3)
+for(i in 1:nrow(ypred))
+{lines(density(ypred[i,]),col="pink",lty=3)}
+#lines(density(colMeans(ypred)), col="red", lty=2, lwd=3)
+lines(density(ypred[1,]), col="red", lty=2, lwd=3)
+legend("bottomright", c("y", "post-pred y", "y rep"), lty=c(1,2,3), lwd=2, col=c("black", "red", "pink"), bty="n")
+mtext("B", side=side, line=line, cex=cex, adj=adj)
+
+
+
+# PLOT 3
+# Comorbid HIV and hypertension
+x <- c(2018,2019,2020,2021,2022,2023,2024,2025,2026,2027,2028)
+y <- c(0.0206,0.0198,0.0188,0.0181,0.0173,0.0165,0.0158,0.0151,0.0144,0.0138,0.0131)
+# R stanam
+sm3   <- stan_glm(y~x, family=gaussian(), data = data.frame(x,y), seed=1234)
+# Y predicted
+ypred <- posterior_predict(sm3, draws = 50)
+# density plot
+plot(density(y), col="black", lwd=3, xlab="HIV & Hypertension prevalence", main="HIV & Hypertension")
+lines(density(ypred[1,]), col="red", lty=2, lwd=3)
+for(i in 1:nrow(ypred))
+{lines(density(ypred[i,]), col="pink", lty=3)}
+#lines(density(colMeans(ypred)), col="red", lty=2, lwd=3)
+lines(density(ypred[1,]), col="red", lty=2, lwd=3)
+legend("bottomright", c("y", "post-pred y", "y rep"), lty=c(1,2,3), lwd=2, col=c("black", "red", "pink"), bty="n")
+mtext("C", side=side, line=line, cex=cex, adj=adj)
+
+
+# PLOT 4
+# Depression
+x <- c(2018,2020,2025,2030,2035)
+y <- c(0.039,0.038,0.037,0.037,0.036)
+# R stanam
+sm4   <- stan_glm(y~x, family=gaussian(), data = data.frame(x,y), seed=1234)
+# Y predicted
+ypred <- posterior_predict(sm4, draws = 50)
+# density plot
+plot(density(y),col="black", lwd=3, xlab="Depression prevalence", main="Depression")
+lines(density(ypred[1,]), col="red", lty=2, lwd=3)
+for(i in 1:nrow(ypred))
+{lines(density(ypred[i,]),col="pink",lty=3)}
+#lines(density(colMeans(ypred)), col="red", lty=2, lwd=3)
+lines(density(ypred[1,]), col="red", lty=2, lwd=3)
+legend("bottomright", c("y", "post-pred y", "y rep"), lty=c(1,2,3), lwd=2, col=c("black", "red", "pink"), bty="n")
+mtext("D", side=side, line=line, cex=cex, adj=adj)
+
+
+```
+# EMULATOR VALIDATION
+- We evaluate and validate our emulator using the leave-one-out cross validation (LOO) technique
+- The technique is implemented using the loo R package whereby the computation is done using Pareto-smoothed importance sampling (PSIS) which regularizes importance weights
+- A detailed guide can be found here:
+https://cran.r-project.org/web/packages/loo/vignettes/loo2-large-data.html
+
+https://andrewproctor.github.io/rcourse/module6.html#model_testing
+
+```{r}
+# HIV model validation
+# We call sm1 from the above posterior predictive analysis
+# Getting the credible intervals
+posterior_interval(sm1, prob=0.95)
+
+# Graphical Credible intervals
+plot(sm1)
+
+# Juxtaposing the prior and the posterior
+posterior_vs_prior(sm1)
+
+# Graphical posterior predictive analysis
+pp_check(sm1)
+# Watanabe-Akaike information criterion
+waic(sm1)
+# Leave One Out Cross-Validation
+loo(sm1)
+
+
+# HYPERTENSION MODEL EVALUATION
+# We call sm2 from the above posterior predictive analysis
+# Getting the credible intervals
+posterior_interval(sm2, prob=0.95)
+
+# Graphical Credible intervals
+plot(sm2)
+
+# Juxtaposing the prior and the posterior
+posterior_vs_prior(sm2)
+
+# Graphical posterior predictive analysis
+pp_check(sm2)
+# Watanabe-Akaike information criterion
+waic(sm2)
+# Leave One Out Cross-Validation
+loo(sm2)
+
+
+# COMORBID HIV AND HYPERTENSION MODEL EVALUATION
+# We call sm3 from the above posterior predictive analysis
+# Getting the credible intervals
+posterior_interval(sm3, prob=0.95)
+
+# Graphical Credible intervals
+plot(sm3)
+
+# Juxtaposing the prior and the posterior
+posterior_vs_prior(sm3)
+
+# Graphical posterior predictive analysis
+pp_check(sm3)
+# Watanabe-Akaike information criterion
+waic(sm3)
+# Leave One Out Cross-Validation
+loo(sm3, k_threshold = 0.7) #the threshold is put in order to calculate the ELPD without the assumption that these observations are negligible. 
+# This will refit the model 1 times to compute the ELPDs for the problematic observations directly.
+
+
+# DEPRESSION MODEL VALIDATION
+# We call sm4 from the above posterior predictive analysis
+# Getting the credible intervals
+posterior_interval(sm4, prob=0.95)
+
+# Graphical Credible intervals
+plot(sm4)
+
+# Juxtaposing the prior and the posterior
+posterior_vs_prior(sm4)
+
+# Graphical posterior predictive analysis
+pp_check(sm4)
+# Watanabe-Akaike information criterion
+waic(sm4)
+# Leave One Out Cross-Validation
+loo(sm4)
+
+```
+# Loo output explanation   
+- From the above loo cross validation outputs, we observe that all the four GP models have pareto k estimates with k-threshold values of k<0.7 which are okay.
+-We therefore validate that our emulator is a good representation of the simulators.
